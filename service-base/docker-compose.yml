@@ -4,7 +4,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "${LOCAL_POSTGRES_PASSWORD:?set LOCAL_POSTGRES_PASSWORD in a local .env file}"
+      POSTGRES_PASSWORD: "${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .dev.env, then run compose with --env-file .dev.env}"
       POSTGRES_DB: app_db_dev
     ports:
       - 5432:5432
@@ -16,7 +16,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "${LOCAL_POSTGRES_PASSWORD:?set LOCAL_POSTGRES_PASSWORD in a local .env file}"
+      POSTGRES_PASSWORD: "${DATABASE_PASSWORD:?set DATABASE_PASSWORD in .dev.env, then run compose with --env-file .dev.env}"
       POSTGRES_DB: app_db_prod
     ports:
       - 5433:5432
