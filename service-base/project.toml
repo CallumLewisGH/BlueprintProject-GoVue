@@ -1,0 +1,7 @@
+[[build.env]]
+name = "GOOGLE_BUILDABLE"
+value = "./cmd/app"
+
+[[build.env]]
+name = "GOOGLE_ENTRYPOINT"
+value = "/layers/google.go.build/bin/main"

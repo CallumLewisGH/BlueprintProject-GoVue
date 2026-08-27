@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+  /* Base colors - 8 total for light mode */
+  --bg-color: #faf9fc;                /* Faint violet-tinted white */
+  --text-color: #1e1b2e;              /* Near-black with a violet cast */
+  --surface: #f3f1f9;
+
+  --card-bg: #e9e5f5;
+  --border: #d8d2ee;
+  --accent: #7c3aed;                  /* Violet 600 */
+  --accent-light: #c4b5fd;            /* Violet 300 */
+  --muted: #6b6478;                   /* Muted violet-gray */
+
+  /* Header specific */
+  --header-bg: #1e1b2e;               /* Deep violet-black */
+  --header-text: #faf9fc;
+  --header-muted: #d8d2ee;
+
+  /* Derived */
+  --badge-bg: rgba(124, 58, 237, 0.3);
+  --badge-border: rgba(124, 58, 237, 0.6);
+  --glow-orange: rgba(124, 58, 237, 0.2);
+  --glow-amber: rgba(167, 139, 250, 0.2);
+}
+
+.dark {
+  /* 8 colors for dark mode - matching structure */
+  --bg-color: #1e1b2e;                /* Deep violet-black */
+  --text-color: #faf9fc;
+  --surface: #2a2440;
+  --card-bg: #3d3557;
+  --border: #4f4570;
+  --accent: #7c3aed;                  /* Violet 600 */
+  --accent-light: #6d28d9;            /* Violet 700 */
+  --muted: #9d94b8;
+
+  /* Header specific */
+  --header-bg: #100d1c;               /* Near-black, slightly darker */
+  --header-text: #faf9fc;
+  --header-muted: #d8d2ee;
+
+  /* Derived */
+  --badge-bg: rgba(124, 58, 237, 0.2);
+  --badge-border: rgba(124, 58, 237, 0.5);
+  --glow-orange: rgba(124, 58, 237, 0.1);
+  --glow-amber: rgba(167, 139, 250, 0.1);
+}
