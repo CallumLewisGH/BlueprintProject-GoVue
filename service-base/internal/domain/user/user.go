@@ -21,6 +21,12 @@ type User struct {
 	LastLogin     *time.Time
 	AuthId        string `gorm:"size:255;uniqueIndex;not null" json:"-"`
 
+	// Refresh session (single active session per user - a fresh login or
+	// refresh overwrites whatever was here). Never exposed via UserDTO/API
+	// responses - this is sensitive server-side auth state, not profile data.
+	RefreshTokenHash      *string    `gorm:"size:64;uniqueIndex" json:"-"`
+	RefreshTokenExpiresAt *time.Time `json:"-"`
+
 	// Profile
 	ProfilePicture *string `gorm:"text"`
 	Bio            string  `gorm:"size:500"`

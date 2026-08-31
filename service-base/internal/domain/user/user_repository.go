@@ -34,6 +34,10 @@ func (repo *UserRepo) WithId(id uuid.UUID) *UserRepo {
 	return &UserRepo{BaseRepo: repo.Where("id = ?", id)}
 }
 
+func (repo *UserRepo) WithRefreshTokenHash(hash string) *UserRepo {
+	return &UserRepo{BaseRepo: repo.Where("refresh_token_hash = ?", hash)}
+}
+
 func (repo *UserRepo) IsActive() *UserRepo {
 	return &UserRepo{BaseRepo: repo.Where("is_active = ?", true)}
 }

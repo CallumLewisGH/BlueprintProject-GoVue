@@ -32,7 +32,30 @@ export class AuthenticationService {
 
     public static logout(): void {
         localStorage.removeItem('jwt_token');
-        
+
         window.location.href = `${config.apiBaseUrl}/authentication/logout/${this._provider}`;
+    }
+
+    // Silently renews the access token using the httpOnly refresh cookie -
+    // credentials:'include' is required for the browser to send it
+    // cross-origin. Returns false (without throwing) on any failure, since
+    // callers should treat "couldn't refresh" as "session's over", not as
+    // an error to surface.
+    public static async refreshToken(): Promise<boolean> {
+        try {
+            const response = await fetch(`${config.apiBaseUrl}/authentication/refresh`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            if (!response.ok) return false;
+
+            const data = await response.json();
+            if (!data.token) return false;
+
+            localStorage.setItem('jwt_token', data.token);
+            return true;
+        } catch {
+            return false;
+        }
     }
 }

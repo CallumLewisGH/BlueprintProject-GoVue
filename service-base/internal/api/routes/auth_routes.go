@@ -7,17 +7,19 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api"
+	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/auth"
 	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/contracts/requests"
 	command "github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/handlers/commands"
 	query "github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/handlers/queries"
+	user "github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/domain/user"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/markbates/goth/gothic"
 )
+
+const refreshCookieName = "refresh_token"
 
 // RegisterAuthRoutes godoc
 // @Summary Authentication-related endpoints
@@ -32,6 +34,7 @@ func RegisterAuthRoutes(s *api.Server) {
 		// response mode) rather than a GET redirect - Google doesn't, but keep this
 		// route available for providers that do.
 		authGroup.POST("/:provider/callback", authCallback)
+		authGroup.POST("/refresh", refreshToken)
 		authGroup.GET("/logout/:provider", logout)
 	}
 }
@@ -106,7 +109,7 @@ func authCallback(c *gin.Context) {
 		return
 	}
 
-	user, err := query.GetUserByAuthIdQuery(c, authUser.UserID)
+	loggedInUser, err := query.GetUserByAuthIdQuery(c, authUser.UserID)
 
 	if err != nil {
 		userReq := requests.CreateUserRequest{
@@ -115,7 +118,7 @@ func authCallback(c *gin.Context) {
 			Username: deriveUsername(authUser.Email),
 		}
 
-		user, err = command.CreateUserCommand(c, userReq)
+		loggedInUser, err = command.CreateUserCommand(c, userReq)
 
 		if err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": "The username based off of the email: " + userReq.Email + " is already in use. " + err.Error()})
@@ -123,26 +126,70 @@ func authCallback(c *gin.Context) {
 		}
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"userAuthId": authUser.UserID,
-		"userId":     user.ID,
-		"exp":        time.Now().Add(time.Hour * 72).Unix(),
-	})
+	accessToken, err := auth.MintAccessToken(loggedInUser.ID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
 
-	tokenString, _ := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	// A failure here just means no silent refresh for this session (falls
+	// back to a full re-login once the access token expires) - not worth
+	// blocking login over.
+	if rawRefreshToken, err := command.IssueRefreshTokenCommand(c, loggedInUser.ID); err == nil {
+		setRefreshCookie(c, rawRefreshToken)
+	}
 
-	target := fmt.Sprintf("%s?token=%s", os.Getenv("FRONTEND_URL"), tokenString)
+	target := fmt.Sprintf("%s?token=%s", os.Getenv("FRONTEND_URL"), accessToken)
 	c.Redirect(http.StatusFound, target)
+}
+
+// Refresh Token godoc
+// @Summary Silently renew the access token
+// @Description Reads the refresh cookie (works even if the access token has already expired), rotates it, and issues a fresh access token
+// @Tags Authentication
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} map[string]string "Missing, invalid, or expired refresh token"
+// @Router /authentication/refresh [post]
+func refreshToken(c *gin.Context) {
+	rawToken, err := c.Cookie(refreshCookieName)
+	if err != nil || rawToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No refresh token"})
+		return
+	}
+
+	rotated, err := command.RotateRefreshTokenCommand(c, rawToken)
+	if err != nil {
+		clearRefreshCookie(c)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired refresh token"})
+		return
+	}
+
+	accessToken, err := auth.MintAccessToken(rotated.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to issue token"})
+		return
+	}
+
+	setRefreshCookie(c, rotated.RawToken)
+	c.JSON(http.StatusOK, gin.H{"token": accessToken})
 }
 
 // Logout godoc
 // @Summary Log out the user
-// @Description Clears the session for the specified provider
+// @Description Ends the refresh session and clears the OAuth session for the specified provider
 // @Tags Authentication
 // @Param provider path string true "OAuth Provider"
 // @Success 307 "Redirect to Home"
 // @Router /authentication/logout/{provider} [get]
 func logout(c *gin.Context) {
+	// Cookies attach to this navigation regardless of it not being a fetch
+	// call, so the refresh cookie (if any) is present here without the
+	// frontend needing to do anything extra for logout to work.
+	if rawToken, err := c.Cookie(refreshCookieName); err == nil && rawToken != "" {
+		_ = command.InvalidateRefreshTokenCommand(c, rawToken)
+	}
+	clearRefreshCookie(c)
+
 	q := c.Request.URL.Query()
 	q.Add("provider", c.Param("provider"))
 	c.Request.URL.RawQuery = q.Encode()
@@ -150,4 +197,28 @@ func logout(c *gin.Context) {
 	gothic.Logout(c.Writer, c.Request)
 	target := os.Getenv("FRONTEND_URL")
 	c.Redirect(http.StatusTemporaryRedirect, target)
+}
+
+// setRefreshCookie and clearRefreshCookie are scoped to /authentication -
+// the only routes that ever need to read this cookie - rather than the
+// whole site, keeping its exposure as narrow as possible.
+
+func setRefreshCookie(c *gin.Context, rawToken string) {
+	isProd := os.Getenv("ENVIRONMENT") != "dev" && os.Getenv("ENVIRONMENT") != "development"
+	sameSite := http.SameSiteLaxMode
+	if isProd {
+		// If your frontend and backend end up on different domains in prod,
+		// this needs SameSite=None (+ Secure, required alongside it) to be
+		// sent on cross-origin fetches at all - same reasoning as the OAuth
+		// session cookie in internal/api/auth/auth.go. Lax is fine if
+		// they're on the same site.
+		sameSite = http.SameSiteNoneMode
+	}
+	c.SetSameSite(sameSite)
+	c.SetCookie(refreshCookieName, rawToken, int(user.RefreshTokenLifetime.Seconds()), "/authentication", "", isProd, true)
+}
+
+func clearRefreshCookie(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(refreshCookieName, "", -1, "/authentication", "", false, true)
 }
