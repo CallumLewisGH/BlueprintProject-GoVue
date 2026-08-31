@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"log"
 	"net/http"
 	"os"
 
@@ -12,6 +13,11 @@ import (
 
 func NewAuth() {
 	key := os.Getenv("SESSION_KEY")
+	if key == "" {
+		log.Fatal("SESSION_KEY is not set; refusing to start (gorilla/sessions would fail with an opaque " +
+			"\"hash key is not set\" error the moment a session cookie is touched, instead of failing at startup)")
+	}
+
 	isProd := os.Getenv("ENVIRONMENT") == "prod"
 
 	googleClientId := os.Getenv("GOOGLE_CLIENT_ID")

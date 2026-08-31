@@ -2,6 +2,10 @@ import { ref } from 'vue'
 import { UploadsService } from '@/services/UploadsService'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+// Must match integrations.MaxUploadBytes on the backend - GCS enforces this
+// via the X-Goog-Content-Length-Range header baked into the signed URL, so
+// the PUT below has to send the same header or the upload is rejected.
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 // Two-step upload: ask the backend for a signed URL scoped to this user and
 // purpose, then PUT the file directly to storage. The backend never sees
@@ -19,6 +23,11 @@ export function useImageUpload() {
       return null
     }
 
+    if (file.size > MAX_UPLOAD_BYTES) {
+      error.value = `Please choose an image under ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`
+      return null
+    }
+
     isUploading.value = true
     try {
       const signResult = await UploadsService.createUpload({ purpose, contentType: file.type })
@@ -29,7 +38,10 @@ export function useImageUpload() {
 
       const putResponse = await fetch(signResult.data.uploadUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type },
+        headers: {
+          'Content-Type': file.type,
+          'X-Goog-Content-Length-Range': `0,${MAX_UPLOAD_BYTES}`
+        },
         body: file
       })
 

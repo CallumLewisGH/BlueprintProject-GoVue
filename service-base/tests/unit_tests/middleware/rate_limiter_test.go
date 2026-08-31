@@ -7,20 +7,15 @@ import (
 	"time"
 
 	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/middleware"
-	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/tests/test_config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRateLimiter(t *testing.T) {
-	// Start Redis container
-	redisContainer := test_config.StartTestRedisContainer(t)
-	defer redisContainer.Cleanup()
-
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	limiter := middleware.NewRateLimiter(1, time.Minute, redisContainer.DbConnStr)
+	limiter := middleware.NewRateLimiter(1, time.Minute)
 	router.Use(limiter)
 
 	// Add a test endpoint

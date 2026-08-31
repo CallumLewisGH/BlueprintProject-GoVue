@@ -57,6 +57,12 @@ func GetGCSClient() (*GCSClient, error) {
 	return gcsInstance, gcsInitErr
 }
 
+// MaxUploadBytes caps how large a file the signed URL will accept - GCS
+// enforces this itself via the X-Goog-Content-Length-Range header, so an
+// oversized PUT is rejected by storage before it ever reaches our bucket
+// (and the caller must send that same header, see the frontend upload code).
+const MaxUploadBytes = 5 * 1024 * 1024 // 5MB
+
 // GenerateUploadURL returns a short-lived signed URL the caller can PUT the
 // object to directly, plus the public URL it will be reachable at once
 // uploaded (the bucket must grant allUsers Storage Object Viewer).
@@ -66,6 +72,7 @@ func (c *GCSClient) GenerateUploadURL(objectKey string, contentType string) (upl
 		Method:      "PUT",
 		Expires:     time.Now().Add(15 * time.Minute),
 		ContentType: contentType,
+		Headers:     []string{fmt.Sprintf("X-Goog-Content-Length-Range:0,%d", MaxUploadBytes)},
 	}
 	if c.saEmail != "" {
 		opts.GoogleAccessID = c.saEmail

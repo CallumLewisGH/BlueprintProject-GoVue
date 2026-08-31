@@ -1,12 +1,10 @@
 package middleware
 
 import (
-	"os"
 	"time"
 
 	ratelimit "github.com/JGLTechnologies/gin-rate-limit"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
 func keyFunc(c *gin.Context) string {
@@ -14,26 +12,22 @@ func keyFunc(c *gin.Context) string {
 }
 
 func errorHandler(c *gin.Context, info ratelimit.Info) {
-	c.JSON(429, "Too many requests. Try again in "+time.Until(info.ResetTime).String())
+	c.JSON(429, gin.H{"error": "Too many requests. Try again in " + time.Until(info.ResetTime).String()})
 }
 
-func NewRateLimiter(requestsPer uint, timeUnit time.Duration, redisURL string) gin.HandlerFunc {
-	if redisURL == "" {
-		redisURL = os.Getenv("REDIS_URL")
-	}
-
-	store := ratelimit.RedisStore(&ratelimit.RedisOptions{
-		RedisClient: redis.NewClient(&redis.Options{
-			Addr: redisURL,
-		}),
+// NewRateLimiter is in-memory and per-instance - no Redis or other shared
+// store to run. If you deploy this to multiple instances behind a load
+// balancer, the effective limit scales with instance count (each tracks its
+// own counters) - an accepted tradeoff for not standing up shared
+// infrastructure just for rate limiting.
+func NewRateLimiter(requestsPer uint, timeUnit time.Duration) gin.HandlerFunc {
+	store := ratelimit.InMemoryStore(&ratelimit.InMemoryOptions{
 		Rate:  timeUnit,
 		Limit: requestsPer,
 	})
 
-	mw := ratelimit.RateLimiter(store, &ratelimit.Options{
+	return ratelimit.RateLimiter(store, &ratelimit.Options{
 		ErrorHandler: errorHandler,
 		KeyFunc:      keyFunc,
 	})
-
-	return mw
 }

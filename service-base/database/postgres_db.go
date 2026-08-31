@@ -77,6 +77,12 @@ func (db *Database) InitialiseTestDB(connStr string) {
 	}
 
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	// Capped conservatively: if you deploy this across multiple
+	// autoscaled instances, each with its own pool, and your Postgres has
+	// a typical max_connections=100, an uncapped pool per instance risks
+	// exhausting that under load and failing every instance at once.
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
 
 	db.GormDB = gormDB
 	log.Printf("GORM Database Connection Succeeded")
@@ -113,6 +119,12 @@ func (db *Database) InitialiseDevDB() {
 	}
 
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	// Capped conservatively: if you deploy this across multiple
+	// autoscaled instances, each with its own pool, and your Postgres has
+	// a typical max_connections=100, an uncapped pool per instance risks
+	// exhausting that under load and failing every instance at once.
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
 
 	db.GormDB = gormDB
 	log.Printf("GORM Database Connection Succeeded")
@@ -152,6 +164,12 @@ func (db *Database) InitialiseProdDB() {
 	}
 
 	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	// Capped conservatively: if you deploy this across multiple
+	// autoscaled instances, each with its own pool, and your Postgres has
+	// a typical max_connections=100, an uncapped pool per instance risks
+	// exhausting that under load and failing every instance at once.
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetMaxIdleConns(5)
 
 	db.GormDB = gormDB
 	log.Printf("GORM Database Connection Succeeded")

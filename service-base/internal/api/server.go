@@ -4,14 +4,40 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/CallumLewisGH/BlueprintProject-GoVue/service-base/internal/api/middleware"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humagin"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
+
+// corsAllowedOrigins reads a comma-separated allow-list from CORS_ALLOWED_ORIGINS
+// so it can be set per-environment (dev/staging/prod) without a code change or
+// redeploy. Only dev gets a built-in fallback (the local Vite server) - failing
+// fast anywhere else beats silently rejecting every cross-origin request, which
+// is a confusing way to discover a missing env var.
+func corsAllowedOrigins() []string {
+	if raw := os.Getenv("CORS_ALLOWED_ORIGINS"); raw != "" {
+		origins := strings.Split(raw, ",")
+		for i, origin := range origins {
+			origins[i] = strings.TrimSpace(origin)
+		}
+		return origins
+	}
+
+	environment := os.Getenv("ENVIRONMENT")
+	if environment == "dev" || environment == "development" {
+		return []string{"http://localhost:5173"}
+	}
+
+	log.Fatal("CORS_ALLOWED_ORIGINS is not set; refusing to start (a missing value here " +
+		"would otherwise silently reject every cross-origin request instead of failing loudly)")
+	return nil
+}
 
 type Server struct {
 	*gin.Engine
@@ -47,19 +73,19 @@ func NewServer() *Server {
 		router.Use(gin.Recovery())
 		fmt.Println("Running in PRODUCTION mode")
 	}
-	// CORS configuration. Add your deployed frontend origin(s) here once you have one.
-	allowedOrigins := []string{"http://localhost:5173", "http://localhost:8000"}
-	if extra := os.Getenv("FRONTEND_URL"); extra != "" {
-		allowedOrigins = append(allowedOrigins, extra)
-	}
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     allowedOrigins,
+		AllowOrigins:     corsAllowedOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	// Global, per-IP, in-memory rate limit - a coarse baseline against abuse/
+	// scripted hammering. Route-specific tighter limits can be layered on top
+	// later if a particular endpoint needs it.
+	router.Use(middleware.NewRateLimiter(100, time.Minute))
 
 	// Huma config with OpenAPI spec generation
 	config := huma.DefaultConfig("Service Base API", "1.0")
